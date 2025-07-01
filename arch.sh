@@ -234,7 +234,7 @@ HARDWARE_PKGS="hwdetect lsscsi mtools sg3_utils"
 MISC_PKGS="btop duf hwinfo fastfetch pv rsync"
 
 PRINTER_PKGS="cups cups-filters cups-pdf foomatic-db foomatic-db-engine foomatic-db-nonfree foomatic-db-nonfree-ppds foomatic-db-ppds gsfonts \
-gutenprint foomatic-db-gutenprint-ppd splix system-config-printer hplip python-pyqt5 python-reportlab"
+gutenprint splix system-config-printer hplip python-pyqt5 python-reportlab"
 
 ACCESSIBILITY_PKGS="espeakup mousetweaks orca"
 
