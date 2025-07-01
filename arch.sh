@@ -58,8 +58,8 @@ if ! [[ "$DISK_INDEX" =~ ^[0-9]+$ ]] || (( DISK_INDEX < 0 || DISK_INDEX >= ${#DI
 fi
 DISK="/dev/${DISKS[$DISK_INDEX]}"
 echo "⚠️ WARNING: This will ERASE ALL DATA on $DISK"
-read -p "Type YES to continue: " CONFIRM
-[[ "$CONFIRM" != "YES" ]] && echo "Aborted." && exit 1
+read -p "Type yes to continue: " CONFIRM
+[[ "$CONFIRM" != "yes" ]] && echo "Aborted." && exit 1
 
 
 echo "Choose filesystem: (1) Btrfs, (2) Ext4"
@@ -145,8 +145,8 @@ read -p "Install Gaming (yes / no): " GAMING
 export GAMING
 
 if [[ "$GAMING" == "yes" ]]; then
-read -p "Steam native (yes / no): " STEAM_NATIVE
-export STEAM_NATIVE
+  read -p "Steam native (yes / no): " STEAM_NATIVE
+  export STEAM_NATIVE
 fi
 
 # === PARTITION & FORMAT ===
@@ -217,24 +217,46 @@ pacman -Sy --noconfirm archlinux-keyring
 BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware alsa-firmware efibootmgr networkmanager grub os-prober nano sudo htop iwd nano openssh smartmontools vim \
 	wget xorg-server xorg-xinit libwnck3 xorg-xinput xorg-xkill pacman-contrib pkgfile bash-completion cpupower power-profiles-daemon \
 	nano-syntax-highlighting git cmake firefox ${CPU_MICROCODE} $DE_PKGS"
-#AUDIO_PKGS="$BASE_PKGS pipewire pipewire-jack pipewire-pulse pipewire-alsa alsa-plugins alsa-utils wireplumber"
-#NETWORK_PKGS="$BASE_PKGS dnsmasq dnsutils ethtool modem-manager-gui networkmanager-openvpn nss-mdns usb_modeswitch wireless-regdb networkmanager-l2tp \
-#xl2tpd wireless_tools wpa_supplicant"
-#BLUETOOTH_PKGS="$BASE_PKGS bluez bluez-hid2hci bluez-utils"
-#DESKTOP_INTER_PKGS="$BASE_PKGS ffmpegthumbnailer gst-libav gst-plugin-pipewire libgsf libopenraw poppler-glib vulkan-icd-loader vulkan-mesa-layers"
-#FILE_SYSTEM_PKGS="$BASE_PKGS efitools nfs-utils ntp unrar unzip"
-#HARDWARE_PKGS="$BASE_PKGS hwdetect lsscsi mtools sg3_utils"
-#MISC_PKGS="$BASE_PKGS btop duf hwinfo fastfetch pv rsync"
-#PRINTER_PKGS="$BASE_PKGS cups cups-filters cups-pdf foomatic-db foomatic-db-engine foomatic-db-nonfree foomatic-db-nonfree-ppds foomatic-db-ppds gsfonts \
-#gutenprint foomatic-db-gutenprint-ppd splix system-config-printer hplip python-pyqt5 python-reportlab"
-#ACCESSIBILITY_PKGS="$BASE_PKGS espeakup mousetweaks orca"
-#FONT_PKGS="$BASE_PKGS adwaita-fonts noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra ttf-liberation otf-cascadia-code ttf-noto-nerd ttf-hack inter-font \
-#cantarell-fonts otf-font-awesome
+	
+AUDIO_PKGS="pipewire pipewire-jack pipewire-pulse pipewire-alsa alsa-plugins alsa-utils wireplumber"
+
+NETWORK_PKGS="dnsmasq dnsutils ethtool modem-manager-gui networkmanager-openvpn nss-mdns usb_modeswitch wireless-regdb networkmanager-l2tp \
+xl2tpd wireless_tools wpa_supplicant"
+
+BLUETOOTH_PKGS="$bluez bluez-hid2hci bluez-utils"
+
+DESKTOP_INTER_PKGS="ffmpegthumbnailer gst-libav gst-plugin-pipewire libgsf libopenraw poppler-glib vulkan-icd-loader vulkan-mesa-layers"
+
+FILE_SYSTEM_PKGS="efitools nfs-utils ntp unrar unzip"
+
+HARDWARE_PKGS="hwdetect lsscsi mtools sg3_utils"
+
+MISC_PKGS="btop duf hwinfo fastfetch pv rsync"
+
+PRINTER_PKGS="cups cups-filters cups-pdf foomatic-db foomatic-db-engine foomatic-db-nonfree foomatic-db-nonfree-ppds foomatic-db-ppds gsfonts \
+gutenprint foomatic-db-gutenprint-ppd splix system-config-printer hplip python-pyqt5 python-reportlab"
+
+ACCESSIBILITY_PKGS="espeakup mousetweaks orca"
+
+FONT_PKGS="adwaita-fonts noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra ttf-liberation otf-cascadia-code ttf-noto-nerd ttf-hack inter-font \
+cantarell-fonts otf-font-awesome"
+
 [[ "$VM_MACHINE" == "yes" ]] && BASE_PKGS="$BASE_PKGS mesa open-vm-tools gtkmm3"
 [[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
 [[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs timeshift"
 [[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
-pacstrap /mnt $BASE_PKGS
+
+pacstrap /mnt $BASE_PKGS \
+$AUDIO_PKGS \
+$NETWORK_PKGS \
+$BLUETOOTH_PKGS \
+$DESKTOP_INTER_PKGS \
+$FILE_SYSTEM_PKGS \
+$HARDWARE_PKGS \
+$MISC_PKGS \
+$PRINTER_PKGS \
+$ACCESSIBILITY_PKGS \
+$FONT_PKGS
 
 # === FSTAB GENERATION ===
 genfstab -U /mnt > /mnt/etc/fstab
@@ -349,7 +371,7 @@ if [[ "$GPU" == "AMD" ]]; then
 arch-chroot /mnt /bin/bash <<EOF
 cat <<CORE > /etc/polkit-1/localauthority/50-local.d/90-corectrl.pkla
 [User permissions]
-Identity=unix-group:your-user-group
+Identity=unix-group:$USERNAME
 Action=org.corectrl.*
 ResultActive=yes
 CORE
