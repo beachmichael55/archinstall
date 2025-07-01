@@ -259,18 +259,25 @@ cantarell-fonts otf-font-awesome"
 [[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
 [[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs timeshift"
 [[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
+if [[ "$GPU" == "Intel" ]]; then
+    BASE_PKGS="$BASE_PKGS vulkan-intel intel-media-driver intel-gpu-tools libva-intel-driver"
+elif [[ "$GPU" == "AMD" ]]; then
+	BASE_PKGS="$BASE_PKGS vulkan-radeon libva-mesa-driver radeontop mesa-vdpau xf86-video-amdgpu xf86-video-ati corectrl"
+elif [[ "$GPU" == "NVIDIA" ]]; then
+	BASE_PKGS="$BASE_PKGS dkms nvidia-utils nvidia-dkms nvidia-settings lib32-nvidia-utils libva-vdpau-driver"
+fi
 
-pacstrap /mnt $BASE_PKGS \
-$AUDIO_PKGS \
-$NETWORK_PKGS \
-$BLUETOOTH_PKGS \
-$DESKTOP_INTER_PKGS \
-$FILE_SYSTEM_PKGS \
-$HARDWARE_PKGS \
-$MISC_PKGS \
-$PRINTER_PKGS \
-$ACCESSIBILITY_PKGS \
-$FONT_PKGS
+pacstrap /mnt $BASE_PKGS
+#$AUDIO_PKGS \
+#$NETWORK_PKGS \
+#$BLUETOOTH_PKGS \
+#$DESKTOP_INTER_PKGS \
+#$FILE_SYSTEM_PKGS \
+#$HARDWARE_PKGS \
+#$MISC_PKGS \
+#$PRINTER_PKGS \
+#$ACCESSIBILITY_PKGS \
+#$FONT_PKGS
 
 # === FSTAB GENERATION ===
 genfstab -U /mnt > /mnt/etc/fstab
@@ -293,16 +300,15 @@ echo STEAM_NATIVE = "$STEAM_NATIVE"
 echo GPU = "$GPU"
 echo GAMING is = "$GAMING"
 read -p "Paused (yes / no): " PAUSE
-export PAUSE
 
 # === COPY CHROOT SETUP SCRIPT ===
-echo "📄 Copying chroot setup script..."
-cp arch_chroot.sh /mnt/root/arch_chroot.sh
-chmod +x /mnt/root/arch_chroot.sh
+# Configure system
+mkdir -p /mnt/install-arch
+cp ./*.sh /mnt/install-arch
 
 # === EXPORT ENVIRONMENT VARIABLES INTO SCRIPT ===
 echo "🔧 Injecting environment variables into chroot setup script..."
-cat <<EOF >> /mnt/root/arch_chroot.sh
+cat <<EOF >> /mnt/install-arch/arch_chroot.sh
 
 # === Injected Variables ===
 export BOOTLOADER="$BOOTLOADER"
@@ -320,15 +326,12 @@ export AUTOLOGIN="$AUTOLOGIN"
 export STEAM_NATIVE="$STEAM_NATIVE"
 export GPU="$GPU"
 EOF
-
-# === RUN THE CHROOT SCRIPT ===
-echo "🚀 Running arch_chroot.sh in chroot..."
-arch-chroot /mnt /root/arch_chroot.sh
+chmod +x /mnt/install-arch/arch_chroot.sh
+arch-chroot /mnt /bin/bash /install-arch/arch_chroot.sh
 
 # === CLEANUP ===
 echo "🧹 Cleaning up arch_chroot.sh..."
-rm /mnt/root/arch_chroot.sh
-
-
+rm -rf /mnt/install-arch
+umount -R /mnt
 
 echo "✅ Arch Linux installation complete!"
