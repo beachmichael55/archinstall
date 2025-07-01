@@ -74,11 +74,6 @@ if [[ -z "$TIMEZONE" ]]; then
 fi
 export TIMEZONE
 
-
-read -p "Timezone (timedatectl list-timezones): " TIMEZONE
-[[ "$TIMEZONE" == "" ]] && TIMEZONE="America/NewYork"
-export TIMEZONE
-
 read -p "Enter hostname (default: archlinux): " HOSTNAME
 [[ -z "$HOSTNAME" ]] && HOSTNAME="archlinux"
 
@@ -274,7 +269,7 @@ cantarell-fonts otf-font-awesome"
 [[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
 [[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs timeshift"
 [[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
-[[ "$QEMU" == "yes" ]] && BASE_PKGS="$BASE_PKGS qemu-kvm libvirt virt-install bridge-utils virt-manager libvirt-devel virt-top libguestfs-tools guestfs-tools"
+#[[ "$QEMU" == "yes" ]] && BASE_PKGS="$BASE_PKGS qemu-kvm libvirt virt-install bridge-utils virt-manager libvirt-devel virt-top libguestfs-tools guestfs-tools"
 
 if [[ "$GPU" == "Intel" ]]; then
     BASE_PKGS="$BASE_PKGS vulkan-intel intel-media-driver intel-gpu-tools libva-intel-driver"
@@ -379,10 +374,6 @@ systemctl enable power-profiles-daemon
 [[ "$FILESYSTEM" == "btrfs" ]] && {
     echo "📁 Enabling grub-btrfsd for Btrfs snapshots..."
     systemctl enable grub-btrfsd
-}
-[[ "$QEMU" == "yes" ]] && {
-    echo "📁 Enabling QEMU (Virtual Machine Manager ..."
-    systemctl enable libvirtd
 }
 
 if [[ "$CREATE_USER" == "yes" && "$AUTOLOGIN" == "yes" ]]; then
