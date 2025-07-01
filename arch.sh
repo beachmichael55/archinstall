@@ -61,17 +61,19 @@ echo "⚠️ WARNING: This will ERASE ALL DATA on $DISK"
 read -p "Type yes to continue: " CONFIRM
 [[ "$CONFIRM" != "yes" ]] && echo "Aborted." && exit 1
 
-echo "Choose Bootloader: (1) GRUB, (2) Systemd-boot"
-read BL_CHOICE
-[[ "$BL_CHOICE" == "1" ]] && BOOTLOADER="grub"
-[[ "$BL_CHOICE" == "2" ]] && BOOTLOADER="systemd-boot"
-[[ -z "$BOOTLOADER" ]] && echo "Invalid option" && exit 1
-
 echo "Choose filesystem: (1) Btrfs, (2) Ext4"
 read FS_CHOICE
 [[ "$FS_CHOICE" == "1" ]] && FILESYSTEM="btrfs"
 [[ "$FS_CHOICE" == "2" ]] && FILESYSTEM="ext4"
 [[ -z "$FILESYSTEM" ]] && echo "Invalid option" && exit 1
+
+read -p "Timezone (leave blank to auto-detect): " TIMEZONE
+if [[ -z "$TIMEZONE" ]]; then
+    TIMEZONE=$(curl -s https://ipapi.co/timezone)
+    echo "Detected timezone: $TIMEZONE"
+fi
+export TIMEZONE
+
 
 read -p "Timezone (timedatectl list-timezones): " TIMEZONE
 [[ "$TIMEZONE" == "" ]] && TIMEZONE="America/NewYork"
@@ -143,10 +145,16 @@ case $DE_CHOICE in
     ;;
 esac
 
-echo "Is this a virtual machine: (1) Yes, (2) No"
+echo "Is this in virtual machine: (1) Yes, (2) No"
 read VM_CHOICE
 [[ "$VM_CHOICE" == "1" ]] && VM_MACHINE="yes"
 [[ "$VM_CHOICE" == "2" ]] && VM_MACHINE="no"
+[[ -z "$VM_MACHINE" ]] && echo "Invalid option" && exit 1
+
+echo "Install QEMU VM Manager: (1) Yes, (2) No"
+read QEMU_CHOICE
+[[ "$QEMU_CHOICE" == "1" ]] && QEMU="yes"
+[[ "$QEMU_CHOICE" == "2" ]] && QEMU="no"
 [[ -z "$VM_MACHINE" ]] && echo "Invalid option" && exit 1
 
 echo "Install Gaming stuff: (1) Yes, (2) No"
@@ -163,6 +171,12 @@ if [[ "$GAMING" == "yes" ]]; then
   [[ "$SN_CHOICE" == "2" ]] && STEAM_NATIVE="no"
   [[ -z "$STEAM_NATIVE" ]] && echo "Invalid option" && exit 1
 fi
+
+echo "Autologin?: (1) Yes, (2) No"
+read AL_CHOICE
+[[ "$AL_CHOICE" == "1" ]] && AUTOLOGIN="yes"
+[[ "$AL_CHOICE" == "2" ]] && AUTOLOGIN="no"
+[[ -z "$AUTOLOGIN" ]] && echo "Invalid option" && exit 1
 
 # === PARTITION & FORMAT ===
 if [[ "$DISK" == *"nvme"* ]]; then
@@ -260,13 +274,18 @@ cantarell-fonts otf-font-awesome"
 [[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
 [[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs timeshift"
 [[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
+[[ "$QEMU" == "yes" ]] && BASE_PKGS="$BASE_PKGS qemu-kvm libvirt virt-install bridge-utils virt-manager libvirt-devel virt-top libguestfs-tools guestfs-tools"
+
 if [[ "$GPU" == "Intel" ]]; then
     BASE_PKGS="$BASE_PKGS vulkan-intel intel-media-driver intel-gpu-tools libva-intel-driver"
 elif [[ "$GPU" == "AMD" ]]; then
 	BASE_PKGS="$BASE_PKGS vulkan-radeon libva-mesa-driver radeontop mesa-vdpau xf86-video-amdgpu xf86-video-ati corectrl"
 elif [[ "$GPU" == "NVIDIA" ]]; then
 	BASE_PKGS="$BASE_PKGS dkms nvidia-utils nvidia-dkms nvidia-settings lib32-nvidia-utils libva-vdpau-driver"
+	echo "options nvidia_drm modeset=1" > /mnt/etc/modprobe.d/nvidia-drm.conf
 fi
+
+systemctl enable --now libvirtd
 
 pacstrap /mnt $BASE_PKGS
 #$AUDIO_PKGS \
@@ -302,37 +321,137 @@ echo GPU = "$GPU"
 echo GAMING is = "$GAMING"
 read -p "Paused (yes / no): " PAUSE
 
-# === COPY CHROOT SETUP SCRIPT ===
-# Configure system
-mkdir -p /mnt/install-arch
-cp ./*.sh /mnt/install-arch
+arch-chroot /mnt /bin/bash <<EOF
+echo "🕒Setting timezone to $TIMEZONE..."
+ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+hwclock --systohc
+timedatectl set-ntp true
+systemctl enable systemd-timesyncd
 
-# === EXPORT ENVIRONMENT VARIABLES INTO SCRIPT ===
-echo "🔧 Injecting environment variables into chroot setup script..."
-cat <<EOF >> /mnt/install-arch/arch_chroot.sh
+echo "🌐 Generating locale..."
+sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+echo "KEYMAP=us" > /etc/vconsole.conf
 
-# === Injected Variables ===
-export BOOTLOADER="$BOOTLOADER"
-export TIMEZONE="$TIMEZONE"
-export HOSTNAME="$HOSTNAME"
-export ROOT_PASS="$ROOT_PASS"
-export CREATE_USER="$CREATE_USER"
-export USERNAME="$USERNAME"
-export USER_PASS="$USER_PASS"
-export SUDO_USER="$SUDO_USER"
-export DM_SERVICE="$DM_SERVICE"
-export VM_MACHINE="$VM_MACHINE"
-export FILESYSTEM="$FILESYSTEM"
-export AUTOLOGIN="$AUTOLOGIN"
-export STEAM_NATIVE="$STEAM_NATIVE"
-export GPU="$GPU"
+echo "🖥️ Setting hostname to $HOSTNAME..."
+echo "$HOSTNAME" > /etc/hostname
+cat <<HOST > /etc/hosts
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
+HOST
+
+
+echo "🔐 Setting root password..."
+echo "root:$ROOT_PASS" | chpasswd
+if [[ "$CREATE_USER" == "yes" ]]; then
+    echo "👤 Creating user: $USERNAME"
+    useradd -m -G wheel -s /bin/bash "$USERNAME"
+    echo "$USERNAME:$USER_PASS" | chpasswd
+
+    if [[ "$SUDO_USER" == "yes" ]]; then
+        echo "🛡️  Granting sudo privileges to $USERNAME"
+        sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+    fi
+fi
+
+echo "📦 Configuring pacman..."
+sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
+sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
+sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
+sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
+
+echo "⚙️ Enabling system services..."
+systemctl enable NetworkManager
+systemctl enable bluetooth
+systemctl enable cpupower
+systemctl enable power-profiles-daemon
+[[ -n "$DM_SERVICE" ]] && {
+    echo "🔌 Enabling display manager: $DM_SERVICE"
+    systemctl enable "$DM_SERVICE"
+}
+[[ "$VM_MACHINE" == "yes" ]] && {
+    echo "💻 Enabling VM services..."
+    systemctl enable vmtoolsd
+    systemctl enable vmware-vmblock-fuse
+}
+[[ "$FILESYSTEM" == "btrfs" ]] && {
+    echo "📁 Enabling grub-btrfsd for Btrfs snapshots..."
+    systemctl enable grub-btrfsd
+}
+[[ "$QEMU" == "yes" ]] && {
+    echo "📁 Enabling QEMU (Virtual Machine Manager ..."
+    systemctl enable libvirtd
+}
+
+if [[ "$CREATE_USER" == "yes" && "$AUTOLOGIN" == "yes" ]]; then
+    echo "🔓 Setting up auto-login for $USERNAME..."
+    case "$DM_SERVICE" in
+        sddm)
+            mkdir -p /etc/sddm.conf.d
+            echo -e "[Autologin]\nUser=$USERNAME\nSession=plasma.desktop" > /etc/sddm.conf.d/autologin.conf
+            ;;
+        gdm)
+            mkdir -p /etc/gdm
+            echo -e "[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=$USERNAME" >> /etc/gdm/custom.conf
+            ;;
+        lightdm)
+            sed -i "s/^#autologin-user=.*/autologin-user=$USERNAME/" /etc/lightdm/lightdm.conf
+            sed -i "s/^#autologin-session=.*/autologin-session=lightdm-autologin/" /etc/lightdm/lightdm.conf
+            ;;
+    esac
+fi
+
+# Modify mkinitcpio.conf for Btrfs and Microcode
+echo "Modify mkinitcpio..."
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs)/' /etc/mkinitcpio.conf
+mkinitcpio -P
+
+echo "🧹 Installing and configuring GRUB bootloader..."
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+if ! efibootmgr > /dev/null 2>&1; then
+    echo "⚠️  efibootmgr failed — GRUB EFI boot entry might not be created."
+fi
+grub-mkconfig -o /boot/grub/grub.cfg
+
+if [[ "$CREATE_USER" == "yes" ]]; then
+    echo "📥 Installing yay (AUR helper) for $USERNAME..."
+    pacman -S --noconfirm git base-devel
+    sudo -u "$USERNAME" bash -c '
+        cd ~
+        git clone https://aur.archlinux.org/yay.git
+        cd yay
+        makepkg -si --noconfirm
+    '
+fi
+
+echo "📦 Installing and configuring Flatpak..."
+pacman -S --noconfirm flatpak
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak update -y
+flatpak install -y flathub com.github.tchx84.Flatseal
+
+[[ "$STEAM_NATIVE" == "no" ]] && {
+    echo "🎮 Installing Steam via Flatpak..."
+    flatpak install --noninteractive flathub com.valvesoftware.Steam
+}
+[[ "$GPU" == "Intel" ]] && {
+    echo "📺 Installing Intel VAAPI Flatpak support..."
+    flatpak install -y flathub org.freedesktop.Platform.VAAPI.Intel//24.08
+}
+
+if [[ "$GPU" == "AMD" ]]; then
+    echo "🔧 Configuring CoreCtrl permissions for $USERNAME..."
+    cat <<POLKIT > /etc/polkit-1/localauthority/50-local.d/90-corectrl.pkla
+[User permissions]
+Identity=unix-group:$USERNAME
+Action=org.corectrl.*
+ResultActive=yes
+POLKIT
+fi
 EOF
-chmod +x /mnt/install-arch/arch_chroot.sh
-arch-chroot /mnt /bin/bash /install-arch/arch_chroot.sh
+# === In Chroot===
 
-# === CLEANUP ===
-echo "🧹 Cleaning up arch_chroot.sh..."
-rm -rf /mnt/install-arch
-umount -R /mnt
 
 echo "✅ Arch Linux installation complete!"
