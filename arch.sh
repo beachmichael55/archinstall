@@ -261,6 +261,7 @@ $FONT_PKGS
 # === FSTAB GENERATION ===
 genfstab -U /mnt > /mnt/etc/fstab
 
+# == TEST VARIABLE OUTPUT ==
 echo KERNEL is = "$KERNEL_CHOICES"
 echo TIMEZONE = "$TIMEZONE"
 echo HOSTNAME = "$HOSTNAME"
@@ -278,6 +279,7 @@ echo GPU = "$GPU"
 echo GAMING is = "$GAMING"
 read -p "Paused (yes / no): " PAUSE
 export PAUSE
+
 # === COPY CHROOT SETUP SCRIPT ===
 echo "📄 Copying chroot setup script..."
 cp setup_inside_chroot.sh /mnt/root/setup_inside_chroot.sh
