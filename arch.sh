@@ -261,136 +261,56 @@ $FONT_PKGS
 # === FSTAB GENERATION ===
 genfstab -U /mnt > /mnt/etc/fstab
 
-# === CHROOT CONFIGURATION ===
-arch-chroot /mnt /bin/bash <<EOF
-# Set timezone and clock
-ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
-hwclock --systohc
-timedatectl set-ntp true
-systemctl enable systemd-timesyncd
+echo KERNEL is = "$KERNEL_CHOICES"
+echo TIMEZONE = "$TIMEZONE"
+echo HOSTNAME = "$HOSTNAME"
+echo ROOT_PASS = "$ROOT_PASS"
+echo CREATE_USER = "$CREATE_USER"
+echo USERNAME = "$USERNAME"
+echo USER_PASS = "$USER_PASS"
+echo SUDO_USER = "$SUDO_USER"
+echo DM_SERVICE = "$DM_SERVICE"
+echo VM_MACHINE = "$VM_MACHINE"
+echo FILESYSTEM = "$FILESYSTEM"
+echo AUTOLOGIN = "$AUTOLOGIN"
+echo STEAM_NATIVE = "$STEAM_NATIVE"
+echo GPU = "$GPU"
+echo GAMING is = "$GAMING"
+read -p "Paused (yes / no): " PAUSE
+export PAUSE
+# === COPY CHROOT SETUP SCRIPT ===
+echo "📄 Copying chroot setup script..."
+cp setup_inside_chroot.sh /mnt/root/setup_inside_chroot.sh
+chmod +x /mnt/root/setup_inside_chroot.sh
 
-# Locale
-sed -i 's/#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
-locale-gen
-echo "LANG=en_US.UTF-8" > /etc/locale.conf
-echo "KEYMAP=us" > /etc/vconsole.conf
+# === EXPORT ENVIRONMENT VARIABLES INTO SCRIPT ===
+echo "🔧 Injecting environment variables into chroot setup script..."
+cat <<EOF >> /mnt/root/setup_inside_chroot.sh
 
-# Hostname
-echo "$HOSTNAME" > /etc/hostname
-cat <<HOSTS > /etc/hosts
-127.0.0.1   localhost
-::1         localhost
-127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
-HOSTS
-
-# Root password
-echo "root:$ROOT_PASS" | chpasswd
-
-# User
+# === Injected Variables ===
+export TIMEZONE="$TIMEZONE"
+export HOSTNAME="$HOSTNAME"
+export ROOT_PASS="$ROOT_PASS"
+export CREATE_USER="$CREATE_USER"
+export USERNAME="$USERNAME"
+export USER_PASS="$USER_PASS"
+export SUDO_USER="$SUDO_USER"
+export DM_SERVICE="$DM_SERVICE"
+export VM_MACHINE="$VM_MACHINE"
+export FILESYSTEM="$FILESYSTEM"
+export AUTOLOGIN="$AUTOLOGIN"
+export STEAM_NATIVE="$STEAM_NATIVE"
+export GPU="$GPU"
 EOF
 
-# === USER CREATION ===
-if [[ "$CREATE_USER" == "yes" ]]; then
-arch-chroot /mnt /bin/bash <<EOF
-useradd -m -G wheel -s /bin/bash $USERNAME
-echo "$USERNAME:$USER_PASS" | chpasswd
-EOF
-    if [[ "$SUDO_USER" == "yes" ]]; then
-        arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-    fi
-fi
+# === RUN THE CHROOT SCRIPT ===
+echo "🚀 Running setup_inside_chroot.sh in chroot..."
+arch-chroot /mnt /root/setup_inside_chroot.sh
 
-# === PACMAN CONF TWEAKS ===
-arch-chroot /mnt /bin/bash <<EOF
-sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
-sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
-sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
-sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
-EOF
-
-# === SYSTEM SERVICES ===
-if [[ -n "$DE_PKGS" ]]; then
-  arch-chroot /mnt systemctl enable $DM_SERVICE
-fi
-if [[ "$VM_MACHINE" == "yes" ]]; then
-arch-chroot /mnt systemctl enable vmtoolsd 
-arch-chroot /mnt systemctl enable vmware-vmblock-fuse
-fi
-if [[ "$CPU" == "intel" ]]; then
-arch-chroot /mnt systemctl enable power-profiles-daemon
-fi
-if [[ "$FILESYSTEM" == "btrfs" ]]; then
-arch-chroot /mnt systemctl enable grub-btrfsd
-fi
-arch-chroot /mnt systemctl enable bluetooth
-arch-chroot /mnt systemctl enable NetworkManager
-arch-chroot /mnt systemctl enable power-profiles-daemon
-arch-chroot /mnt systemctl enable cpupower
+# === CLEANUP ===
+echo "🧹 Cleaning up setup_inside_chroot.sh..."
+rm /mnt/root/setup_inside_chroot.sh
 
 
-# === AUTO LOGIN ===
-if [[ "$CREATE_USER" == "yes" ]]; then
-  echo -e "\nDo you want to enable auto-login for user '$USERNAME'? (yes/no):"
-  read AUTOLOGIN
-  if [[ "$AUTOLOGIN" == "yes" ]]; then
-    case $DM_SERVICE in
-      sddm)
-        arch-chroot /mnt bash -c "mkdir -p /etc/sddm.conf.d && echo -e '[Autologin]\nUser=$USERNAME\nSession=plasma.desktop' > /etc/sddm.conf.d/autologin.conf"
-        ;;
-      gdm)
-        arch-chroot /mnt bash -c "mkdir -p /etc/gdm && echo -e '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=$USERNAME' >> /etc/gdm/custom.conf"
-        ;;
-      lightdm)
-        arch-chroot /mnt bash -c "sed -i 's/^#autologin-user=.*/autologin-user=$USERNAME/' /etc/lightdm/lightdm.conf"
-        arch-chroot /mnt bash -c "sed -i 's/^#autologin-session=.*/autologin-session=lightdm-autologin/' /etc/lightdm/lightdm.conf"
-        ;;
-    esac
-  fi
-fi
 
-# === GRUB INSTALLATION ===
-arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
-arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
-
-# === OPTIONAL: AUR Helper (yay) and Flathub ===
-if [[ "$CREATE_USER" == "yes" ]]; then
-  echo -e "\nSetting up yay (AUR helper) for user '$USERNAME'..."
-  arch-chroot /mnt /bin/bash <<EOF
-pacman -S --noconfirm git base-devel
-sudo -u $USERNAME bash -c '
-cd ~
-git clone https://aur.archlinux.org/yay.git
-cd yay
-makepkg -si --noconfirm
-'
-EOF
-fi
-
-# === corectrl CONFIGURATION ===
-if [[ "$GPU" == "AMD" ]]; then
-arch-chroot /mnt /bin/bash <<EOF
-cat <<CORE > /etc/polkit-1/localauthority/50-local.d/90-corectrl.pkla
-[User permissions]
-Identity=unix-group:$USERNAME
-Action=org.corectrl.*
-ResultActive=yes
-CORE
-EOF
-fi
-
-# === FLATPAK ===
-echo -e "\nInstalling Flatpak and adding Flathub..."
-arch-chroot /mnt pacman -S --noconfirm flatpak
-arch-chroot /mnt flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-arch-chroot /mnt flatpak update -y
-arch-chroot /mnt flatpak install -y flathub com.github.tchx84.Flatseal
-
-if [[ "$STEAM_NATIVE" == "no" ]]; then
-  arch-chroot /mnt flatpak install --noninteractive flathub com.valvesoftware.Steam
-fi
-if [[ "$GPU" == "Intel" ]]; then
-  arch-chroot /mnt flatpak install -y flathub org.freedesktop.Platform.VAAPI.Intel//24.08
-fi
-
-echo "✅ Arch Linux with ${DM_SERVICE^^} is installed!"
-echo "You can now reboot into your new system."
+echo "✅ Arch Linux installation complete!"
