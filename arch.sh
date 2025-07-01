@@ -74,6 +74,7 @@ read FS_CHOICE
 [[ -z "$FILESYSTEM" ]] && echo "Invalid option" && exit 1
 
 read -p "Timezone (timedatectl list-timezones): " TIMEZONE
+[[ "$TIMEZONE" == "" ]] && TIMEZONE="America/NewYork"
 export TIMEZONE
 
 read -p "Enter hostname (default: archlinux): " HOSTNAME
