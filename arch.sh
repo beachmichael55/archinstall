@@ -61,6 +61,11 @@ echo "⚠️ WARNING: This will ERASE ALL DATA on $DISK"
 read -p "Type yes to continue: " CONFIRM
 [[ "$CONFIRM" != "yes" ]] && echo "Aborted." && exit 1
 
+echo "Choose Bootloader: (1) GRUB, (2) Systemd-boot"
+read BL_CHOICE
+[[ "$BL_CHOICE" == "1" ]] && BOOTLOADER="grub"
+[[ "$BL_CHOICE" == "2" ]] && BOOTLOADER="systemd-boot"
+[[ -z "$BOOTLOADER" ]] && echo "Invalid option" && exit 1
 
 echo "Choose filesystem: (1) Btrfs, (2) Ext4"
 read FS_CHOICE
@@ -68,8 +73,20 @@ read FS_CHOICE
 [[ "$FS_CHOICE" == "2" ]] && FILESYSTEM="ext4"
 [[ -z "$FILESYSTEM" ]] && echo "Invalid option" && exit 1
 
-read -p "Enter timezone (default: America/New_York): " TIMEZONE
-[[ -z "$TIMEZONE" ]] && TIMEZONE="America/New_York"
+echo "Select your timezone (America/*):"
+TIMEZONES=($(find /usr/share/zoneinfo/America -type f | sort))
+# Print the list with numbers, then page it
+for i in "${!TIMEZONES[@]}"; do
+    printf "[%3d] %s\n" "$i" "${TIMEZONES[$i]#/usr/share/zoneinfo/}"
+done | less
+read -p "Enter the number of your timezone (e.g., 140 for New_York): " TZ_INDEX
+# Validate input
+if ! [[ "$TZ_INDEX" =~ ^[0-9]+$ ]] || (( TZ_INDEX < 0 || TZ_INDEX >= ${#TIMEZONES[@]} )); then
+    echo "❌ Invalid timezone selection."
+    exit 1
+fi
+TIMEZONE=${TIMEZONES[$TZ_INDEX]#/usr/share/zoneinfo/}
+
 
 read -p "Enter hostname (default: archlinux): " HOSTNAME
 [[ -z "$HOSTNAME" ]] && HOSTNAME="archlinux"
@@ -112,7 +129,6 @@ for choice in $KERNEL_CHOICES; do
             ;;
     esac
 done
-
 if [[ -z "$KERNEL_PKGS" ]]; then
     echo "⚠️  No valid kernels selected. Proceeding without a kernel package!"
 fi
@@ -138,15 +154,25 @@ case $DE_CHOICE in
     ;;
 esac
 
-read -p "Is this a virtual machine (yes / no): " VM_MACHINE
-export VM_MACHINE
+echo "Is this a virtual machine: (1) Yes, (2) No"
+read VM_CHOICE
+[[ "$VM_CHOICE" == "1" ]] && VM_MACHINE="yes"
+[[ "$VM_CHOICE" == "2" ]] && VM_MACHINE="no"
+[[ -z "$VM_MACHINE" ]] && echo "Invalid option" && exit 1
 
-read -p "Install Gaming (yes / no): " GAMING
-export GAMING
+echo "Install Gaming stuff: (1) Yes, (2) No"
+read GM_CHOICE
+[[ "$GM_CHOICE" == "1" ]] && GAMING="yes"
+[[ "$GM_CHOICE" == "2" ]] && GAMING="no"
+[[ -z "$GAMING" ]] && echo "Invalid option" && exit 1
+
 
 if [[ "$GAMING" == "yes" ]]; then
-  read -p "Steam native (yes / no): " STEAM_NATIVE
-  export STEAM_NATIVE
+  echo "Steam native: (1) Yes, (2) No"
+  read SN_CHOICE
+  [[ "$SN_CHOICE" == "1" ]] && STEAM_NATIVE="yes"
+  [[ "$SN_CHOICE" == "2" ]] && STEAM_NATIVE="no"
+  [[ -z "$STEAM_NATIVE" ]] && echo "Invalid option" && exit 1
 fi
 
 # === PARTITION & FORMAT ===
@@ -262,6 +288,7 @@ $FONT_PKGS
 genfstab -U /mnt > /mnt/etc/fstab
 
 # == TEST VARIABLE OUTPUT ==
+echo BOOTLOADER is = "$BOOTLOADER"
 echo KERNEL is = "$KERNEL_CHOICES"
 echo TIMEZONE = "$TIMEZONE"
 echo HOSTNAME = "$HOSTNAME"
@@ -290,6 +317,7 @@ echo "🔧 Injecting environment variables into chroot setup script..."
 cat <<EOF >> /mnt/root/setup_inside_chroot.sh
 
 # === Injected Variables ===
+export BOOTLOADER="$BOOTLOADER"
 export TIMEZONE="$TIMEZONE"
 export HOSTNAME="$HOSTNAME"
 export ROOT_PASS="$ROOT_PASS"
