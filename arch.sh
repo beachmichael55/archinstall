@@ -73,20 +73,8 @@ read FS_CHOICE
 [[ "$FS_CHOICE" == "2" ]] && FILESYSTEM="ext4"
 [[ -z "$FILESYSTEM" ]] && echo "Invalid option" && exit 1
 
-echo "Select your timezone (America/*):"
-TIMEZONES=($(find /usr/share/zoneinfo/America -type f | sort))
-# Print the list with numbers, then page it
-for i in "${!TIMEZONES[@]}"; do
-    printf "[%3d] %s\n" "$i" "${TIMEZONES[$i]#/usr/share/zoneinfo/}"
-done | less
-read -p "Enter the number of your timezone (e.g., 140 for New_York): " TZ_INDEX
-# Validate input
-if ! [[ "$TZ_INDEX" =~ ^[0-9]+$ ]] || (( TZ_INDEX < 0 || TZ_INDEX >= ${#TIMEZONES[@]} )); then
-    echo "❌ Invalid timezone selection."
-    exit 1
-fi
-TIMEZONE=${TIMEZONES[$TZ_INDEX]#/usr/share/zoneinfo/}
-
+read -p "Timezone (timedatectl list-timezones): " TIMEZONE
+export TIMEZONE
 
 read -p "Enter hostname (default: archlinux): " HOSTNAME
 [[ -z "$HOSTNAME" ]] && HOSTNAME="archlinux"
@@ -309,12 +297,12 @@ export PAUSE
 
 # === COPY CHROOT SETUP SCRIPT ===
 echo "📄 Copying chroot setup script..."
-cp setup_inside_chroot.sh /mnt/root/setup_inside_chroot.sh
-chmod +x /mnt/root/setup_inside_chroot.sh
+cp arch_chroot.sh /mnt/root/arch_chroot.sh
+chmod +x /mnt/root/arch_chroot.sh
 
 # === EXPORT ENVIRONMENT VARIABLES INTO SCRIPT ===
 echo "🔧 Injecting environment variables into chroot setup script..."
-cat <<EOF >> /mnt/root/setup_inside_chroot.sh
+cat <<EOF >> /mnt/root/arch_chroot.sh
 
 # === Injected Variables ===
 export BOOTLOADER="$BOOTLOADER"
@@ -334,12 +322,12 @@ export GPU="$GPU"
 EOF
 
 # === RUN THE CHROOT SCRIPT ===
-echo "🚀 Running setup_inside_chroot.sh in chroot..."
-arch-chroot /mnt /root/setup_inside_chroot.sh
+echo "🚀 Running arch_chroot.sh in chroot..."
+arch-chroot /mnt /root/arch_chroot.sh
 
 # === CLEANUP ===
-echo "🧹 Cleaning up setup_inside_chroot.sh..."
-rm /mnt/root/setup_inside_chroot.sh
+echo "🧹 Cleaning up arch_chroot.sh..."
+rm /mnt/root/arch_chroot.sh
 
 
 
