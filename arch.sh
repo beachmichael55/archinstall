@@ -1,24 +1,43 @@
 #!/bin/bash
 
+# Define the log file
+LOGFILE="install.log"
+
+# Start logging all output to the log file
+exec > >(tee -a "$LOGFILE") 2>&1
+
+# Log each command before executing it
+log_command() {
+    echo "\$ $BASH_COMMAND" >> "$LOGFILE"
+}
+trap log_command DEBUG
+
 set -e
 
 # CPU vendor
 if cat /proc/cpuinfo | grep "vendor" | grep "GenuineIntel" > /dev/null; then
     export CPU_MICROCODE="intel-ucode"
+	export CPU="intel"
 elif cat /proc/cpuinfo | grep "vendor" | grep "AuthenticAMD" > /dev/null; then
     export CPU_MICROCODE="amd-ucode"
+	export CPU="amd"
     export AMD_SCALING_DRIVER="amd_pstate=active"
 fi
 
 # GPU vendor
-if lspci | grep "VGA" | grep "Intel" > /dev/null; then
-    export GPU_PACKAGES="vulkan-intel intel-media-driver intel-gpu-tools"
+if lspci | grep -E "VGA|3D" | grep -q "Intel"; then
+    export GPU_PACKAGES="vulkan-intel intel-media-driver intel-gpu-tools libva-intel-driver"
     export GPU_MKINITCPIO_MODULES="i915"
     export LIBVA_ENV_VAR="LIBVA_DRIVER_NAME=iHD"
-elif lspci | grep "VGA" | grep "AMD" > /dev/null; then
-    export GPU_PACKAGES="vulkan-radeon libva-mesa-driver radeontop mesa-vdpau"
+	export GPU="Intel"
+elif lspci | grep -E "VGA|3D" | grep -q "AMD"; then
+    export GPU_PACKAGES="vulkan-radeon libva-mesa-driver radeontop mesa-vdpau xf86-video-amdgpu xf86-video-ati corectrl"
     export GPU_MKINITCPIO_MODULES="amdgpu"
     export LIBVA_ENV_VAR="LIBVA_DRIVER_NAME=radeonsi"
+	export GPU="AMD"
+elif lspci | grep -E "VGA|3D" | grep -q "NVIDIA"; then
+    export GPU_PACKAGES="dkms nvidia-utils nvidia-dkms nvidia-settings lib32-nvidia-utils libva-vdpau-driver"
+	export GPU="NVIDIA"
 fi
 
 # === USER INTERACTION PHASE ===
@@ -106,7 +125,8 @@ DE_PKGS=""
 DM_SERVICE=""
 case $DE_CHOICE in
   1)
-    DE_PKGS="plasma-meta plasma-workspace konsole dolphin kate ark kio-admin sddm sddm-kcm xdg-utils"
+    DE_PKGS="plasma-meta plasma-workspace konsole dolphin kate ark kio-admin sddm sddm-kcm xdg-utils kwalletmanager egl-wayland ffmpegthumbs \
+	filelight gwenview kcalc kdeconnect kdegraphics-thumbnailers kdialog"
     DM_SERVICE="sddm"
     ;;
   2)
@@ -118,8 +138,16 @@ case $DE_CHOICE in
     ;;
 esac
 
+read -p "Is this a virtual machine (yes / no): " VM_MACHINE
+export VM_MACHINE
+
+read -p "Install Gaming (yes / no): " GAMING
+export GAMING
+
+if [[ "$GAMING" == "yes" ]]; then
 read -p "Steam native (yes / no): " STEAM_NATIVE
 export STEAM_NATIVE
+fi
 
 # === PARTITION & FORMAT ===
 if [[ "$DISK" == *"nvme"* ]]; then
@@ -186,10 +214,26 @@ sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
 
 pacman -Sy --noconfirm archlinux-keyring
 
-BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware alsa-firmware efibootmgr networkmanager grub os-prober nano sudo htop iwd nano \
-	openssh smartmontools vim wget wireless_tools wpa_supplicant ${CPU_MICROCODE} $DE_PKGS"
-[[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam"
-[[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs"
+BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware alsa-firmware efibootmgr networkmanager grub os-prober nano sudo htop iwd nano openssh smartmontools vim \
+	wget xorg-server xorg-xinit libwnck3 xorg-xinput xorg-xkill pacman-contrib pkgfile bash-completion cpupower power-profiles-daemon \
+	nano-syntax-highlighting git cmake firefox ${CPU_MICROCODE} $DE_PKGS"
+#AUDIO_PKGS="$BASE_PKGS pipewire pipewire-jack pipewire-pulse pipewire-alsa alsa-plugins alsa-utils wireplumber"
+#NETWORK_PKGS="$BASE_PKGS dnsmasq dnsutils ethtool modem-manager-gui networkmanager-openvpn nss-mdns usb_modeswitch wireless-regdb networkmanager-l2tp \
+#xl2tpd wireless_tools wpa_supplicant"
+#BLUETOOTH_PKGS="$BASE_PKGS bluez bluez-hid2hci bluez-utils"
+#DESKTOP_INTER_PKGS="$BASE_PKGS ffmpegthumbnailer gst-libav gst-plugin-pipewire libgsf libopenraw poppler-glib vulkan-icd-loader vulkan-mesa-layers"
+#FILE_SYSTEM_PKGS="$BASE_PKGS efitools nfs-utils ntp unrar unzip"
+#HARDWARE_PKGS="$BASE_PKGS hwdetect lsscsi mtools sg3_utils"
+#MISC_PKGS="$BASE_PKGS btop duf hwinfo fastfetch pv rsync"
+#PRINTER_PKGS="$BASE_PKGS cups cups-filters cups-pdf foomatic-db foomatic-db-engine foomatic-db-nonfree foomatic-db-nonfree-ppds foomatic-db-ppds gsfonts \
+#gutenprint foomatic-db-gutenprint-ppd splix system-config-printer hplip python-pyqt5 python-reportlab"
+#ACCESSIBILITY_PKGS="$BASE_PKGS espeakup mousetweaks orca"
+#FONT_PKGS="$BASE_PKGS adwaita-fonts noto-fonts noto-fonts-emoji noto-fonts-cjk noto-fonts-extra ttf-liberation otf-cascadia-code ttf-noto-nerd ttf-hack inter-font \
+#cantarell-fonts otf-font-awesome
+[[ "$VM_MACHINE" == "yes" ]] && BASE_PKGS="$BASE_PKGS mesa open-vm-tools gtkmm3"
+[[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
+[[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs Timeshift"
+[[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
 pacstrap /mnt $BASE_PKGS
 
 # === FSTAB GENERATION ===
@@ -246,7 +290,21 @@ EOF
 if [[ -n "$DE_PKGS" ]]; then
   arch-chroot /mnt systemctl enable $DM_SERVICE
 fi
+if [[ "$VM_MACHINE" == "yes" ]]; then
+arch-chroot /mnt systemctl enable vmtoolsd 
+arch-chroot /mnt systemctl enable vmware-vmblock-fuse
+fi
+if [[ "$CPU" == "intel" ]]; then
+arch-chroot /mnt systemctl enable power-profiles-daemon
+fi
+if [[ "$FILESYSTEM" == "btrfs" ]]; then
+arch-chroot /mnt systemctl enable grub-btrfsd
+fi
+arch-chroot /mnt systemctl enable bluetooth
 arch-chroot /mnt systemctl enable NetworkManager
+arch-chroot /mnt systemctl enable power-profiles-daemon
+arch-chroot /mnt systemctl enable cpupower
+
 
 # === AUTO LOGIN ===
 if [[ "$CREATE_USER" == "yes" ]]; then
@@ -285,13 +343,31 @@ makepkg -si --noconfirm
 '
 EOF
 fi
+
+# === corectrl CONFIGURATION ===
+if [[ "$GPU" == "AMD" ]]; then
+arch-chroot /mnt /bin/bash <<EOF
+cat <<CORE > /etc/polkit-1/localauthority/50-local.d/90-corectrl.pkla
+[User permissions]
+Identity=unix-group:your-user-group
+Action=org.corectrl.*
+ResultActive=yes
+CORE
+EOF
+fi
+
+# === FLATPAK ===
 echo -e "\nInstalling Flatpak and adding Flathub..."
 arch-chroot /mnt pacman -S --noconfirm flatpak
 arch-chroot /mnt flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 arch-chroot /mnt flatpak update -y
+arch-chroot /mnt flatpak install -y flathub com.github.tchx84.Flatseal
 
 if [[ "$STEAM_NATIVE" == "no" ]]; then
   arch-chroot /mnt flatpak install --noninteractive flathub com.valvesoftware.Steam
+fi
+if [[ "$GPU" == "Intel" ]]; then
+  arch-chroot /mnt flatpak install -y flathub org.freedesktop.Platform.VAAPI.Intel//24.08
 fi
 
 echo "✅ Arch Linux with ${DM_SERVICE^^} is installed!"
