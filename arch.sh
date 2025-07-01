@@ -280,8 +280,6 @@ elif [[ "$GPU" == "NVIDIA" ]]; then
 	echo "options nvidia_drm modeset=1" > /mnt/etc/modprobe.d/nvidia-drm.conf
 fi
 
-systemctl enable --now libvirtd
-
 pacstrap /mnt $BASE_PKGS
 #$AUDIO_PKGS \
 #$NETWORK_PKGS \
@@ -374,6 +372,10 @@ systemctl enable power-profiles-daemon
 [[ "$FILESYSTEM" == "btrfs" ]] && {
     echo "📁 Enabling grub-btrfsd for Btrfs snapshots..."
     systemctl enable grub-btrfsd
+}
+[[ "$QEMU" == "yes" ]] && {
+    echo "📁 Enabling QEMU (Virtual Machine Manager ..."
+    systemctl enable libvirtd
 }
 
 if [[ "$CREATE_USER" == "yes" && "$AUTOLOGIN" == "yes" ]]; then
