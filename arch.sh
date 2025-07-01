@@ -22,11 +22,26 @@ elif lspci | grep "VGA" | grep "AMD" > /dev/null; then
 fi
 
 # === USER INTERACTION PHASE ===
-
-read -p "Enter target disk (e.g., /dev/sda, /dev/nvme0n1): " DISK
-echo "WARNING: This will erase $DISK. Type YES to continue:"
-read CONFIRM
+# Get a list of disks (excluding loop and rom)
+DISKS=($(lsblk -d -e 7,11 -n -o NAME))
+echo "Available disks:"
+for i in "${!DISKS[@]}"; do
+    MODEL=$(lsblk -d -n -o MODEL "/dev/${DISKS[$i]}")
+    SIZE=$(lsblk -d -n -o SIZE "/dev/${DISKS[$i]}")
+    echo "  [$i] /dev/${DISKS[$i]}  ($SIZE, $MODEL)"
+done
+# Ask for selection
+read -p "Select the disk number to install to: " DISK_INDEX
+# Validate input
+if ! [[ "$DISK_INDEX" =~ ^[0-9]+$ ]] || (( DISK_INDEX < 0 || DISK_INDEX >= ${#DISKS[@]} )); then
+    echo "❌ Invalid selection."
+    exit 1
+fi
+DISK="/dev/${DISKS[$DISK_INDEX]}"
+echo "⚠️ WARNING: This will ERASE ALL DATA on $DISK"
+read -p "Type YES to continue: " CONFIRM
 [[ "$CONFIRM" != "YES" ]] && echo "Aborted." && exit 1
+
 
 echo "Choose filesystem: (1) Btrfs, (2) Ext4"
 read FS_CHOICE
@@ -34,9 +49,8 @@ read FS_CHOICE
 [[ "$FS_CHOICE" == "2" ]] && FILESYSTEM="ext4"
 [[ -z "$FILESYSTEM" ]] && echo "Invalid option" && exit 1
 
-echo "Enter timezone (e.g. America/New_York):"
-read TIMEZONE
-[[ -z "$TIMEZONE" ]] && TIMEZONE="UTC"
+read -p "Enter timezone (default: America/New_York): " TIMEZONE
+[[ -z "$TIMEZONE" ]] && TIMEZONE="America/New_York"
 
 read -p "Enter hostname (default: archlinux): " HOSTNAME
 [[ -z "$HOSTNAME" ]] && HOSTNAME="archlinux"
@@ -56,26 +70,33 @@ if [[ "$CREATE_USER" == "yes" ]]; then
     read -p "Should $USERNAME be a sudoer? (yes/no): " SUDO_USER
 fi
 
-echo "Choose a linux kernal, may use multiple:"
-echo "1) Linux"
-echo "2) Linux-Zen"
-echo "3) Linux LTS"
-read -p "Enter number: " KERNEL_CHOICE
+echo "Choose one or more Linux kernels to install (separate with spaces):"
+echo "  1) Linux"
+echo "  2) Linux-Zen"
+echo "  3) Linux LTS"
+read -p "Enter numbers (e.g., 1 3): " KERNEL_CHOICES
+
 KERNEL_PKGS=""
-case $KERNAL_CHOICE in
-  1)
-    KERNEL_PKGS="linux linux-headers"
-    ;;
-  2)
-    KERNEL_PKGS="linux-zen linux-zen-headers"
-    ;;
-  3)
-    KERNEL_PKGS="linux-lts linux-lts-headers"
-    ;;
-  *)
-    echo "Invalid choice. Skipping kernal install."
-    ;;
-esac
+for choice in $KERNEL_CHOICES; do
+    case "$choice" in
+        1)
+            KERNEL_PKGS+=" linux linux-headers"
+            ;;
+        2)
+            KERNEL_PKGS+=" linux-zen linux-zen-headers"
+            ;;
+        3)
+            KERNEL_PKGS+=" linux-lts linux-lts-headers"
+            ;;
+        *)
+            echo "⚠️  Invalid kernel choice: $choice"
+            ;;
+    esac
+done
+
+if [[ -z "$KERNEL_PKGS" ]]; then
+    echo "⚠️  No valid kernels selected. Proceeding without a kernel package!"
+fi
 
 echo "Choose a desktop environment:"
 echo "1) KDE Plasma"
@@ -93,7 +114,7 @@ case $DE_CHOICE in
     DM_SERVICE="gdm"
     ;;
   *)
-    echo "Invalid choice. Skipping DE install."
+    echo "Invalid choice. Exiting..." && exit 1
     ;;
 esac
 
@@ -167,7 +188,7 @@ pacman -Sy --noconfirm archlinux-keyring
 
 BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware alsa-firmware efibootmgr networkmanager grub os-prober nano sudo htop iwd nano \
 	openssh smartmontools vim wget wireless_tools wpa_supplicant ${CPU_MICROCODE} $DE_PKGS"
-[[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="steam"
+[[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam"
 [[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs"
 pacstrap /mnt $BASE_PKGS
 
@@ -196,12 +217,6 @@ cat <<HOSTS > /etc/hosts
 127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
 HOSTS
 
-# PACMAN CONF TWEAKS
-sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
-sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
-sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
-sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
-
 # Root password
 echo "root:$ROOT_PASS" | chpasswd
 
@@ -218,6 +233,14 @@ EOF
         arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
     fi
 fi
+
+# === PACMAN CONF TWEAKS ===
+arch-chroot /mnt /bin/bash <<EOF
+sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
+sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
+sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
+sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
+EOF
 
 # === SYSTEM SERVICES ===
 if [[ -n "$DE_PKGS" ]]; then
