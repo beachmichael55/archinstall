@@ -2,17 +2,35 @@
 
 set -e
 
+echo BOOTLOADER is = "$BOOTLOADER"
+echo KERNEL is = "$KERNEL_CHOICES"
+echo TIMEZONE = "$TIMEZONE"
+echo HOSTNAME = "$HOSTNAME"
+echo ROOT_PASS = "$ROOT_PASS"
+echo CREATE_USER = "$CREATE_USER"
+echo USERNAME = "$USERNAME"
+echo USER_PASS = "$USER_PASS"
+echo SUDO_USER = "$SUDO_USER"
+echo DM_SERVICE = "$DM_SERVICE"
+echo VM_MACHINE = "$VM_MACHINE"
+echo FILESYSTEM = "$FILESYSTEM"
+echo AUTOLOGIN = "$AUTOLOGIN"
+echo STEAM_NATIVE = "$STEAM_NATIVE"
+read -p "Paused 1(yes / no): " PAUSE
+
 echo "🕒 Setting timezone to $TIMEZONE..."
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 hwclock --systohc
 timedatectl set-ntp true
 systemctl enable systemd-timesyncd
+read -p "Paused 2(yes / no): " PAUSE
 
 echo "🌐 Generating locale..."
 sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 echo "KEYMAP=us" > /etc/vconsole.conf
+read -p "Paused 3(yes / no): " PAUSE
 
 echo "🖥️ Setting hostname to $HOSTNAME..."
 echo "$HOSTNAME" > /etc/hostname
@@ -21,6 +39,8 @@ cat <<EOF > /etc/hosts
 ::1         localhost
 127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
 EOF
+
+read -p "Paused 4(yes / no): " PAUSE
 
 echo "🔐 Setting root password..."
 echo "root:$ROOT_PASS" | chpasswd
@@ -36,18 +56,21 @@ if [[ "$CREATE_USER" == "yes" ]]; then
     fi
 fi
 
+read -p "Paused 5(yes / no): " PAUSE
 echo "📦 Configuring pacman..."
 sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
 sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
 sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
 sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
 
+read -p "Paused 6(yes / no): " PAUSE
 echo "⚙️ Enabling system services..."
 systemctl enable NetworkManager
 systemctl enable bluetooth
 systemctl enable cpupower
 systemctl enable power-profiles-daemon
 
+read -p "Paused 7(yes / no): " PAUSE
 [[ -n "$DM_SERVICE" ]] && {
     echo "🔌 Enabling display manager: $DM_SERVICE"
     systemctl enable "$DM_SERVICE"
@@ -61,6 +84,7 @@ systemctl enable power-profiles-daemon
     echo "📁 Enabling grub-btrfsd for Btrfs snapshots..."
     systemctl enable grub-btrfsd
 }
+read -p "Paused 8(yes / no): " PAUSE
 
 if [[ "$CREATE_USER" == "yes" && "$AUTOLOGIN" == "yes" ]]; then
     echo "🔓 Setting up auto-login for $USERNAME..."
@@ -79,6 +103,7 @@ if [[ "$CREATE_USER" == "yes" && "$AUTOLOGIN" == "yes" ]]; then
             ;;
     esac
 fi
+read -p "Paused 9(yes / no): " PAUSE
 
 echo "🧹 Installing and configuring GRUB bootloader..."
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
