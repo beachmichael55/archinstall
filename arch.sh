@@ -232,7 +232,7 @@ BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware alsa-firmwar
 #cantarell-fonts otf-font-awesome
 [[ "$VM_MACHINE" == "yes" ]] && BASE_PKGS="$BASE_PKGS mesa open-vm-tools gtkmm3"
 [[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
-[[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs Timeshift"
+[[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs timeshift"
 [[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
 pacstrap /mnt $BASE_PKGS
 
