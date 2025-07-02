@@ -236,11 +236,20 @@ sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
 sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
 sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
 
+# == UPDATE LIVE SYSTEM AND INSTALL NEEDED PKGS ===
 pacman -Sy --noconfirm archlinux-keyring
 pacman -Syy
+pacman -Sy --noconfirm aria2
 pacman -Sy --noconfirm reflector
+
+# == SET REFLECTOR TO FIND BEST MIRROR ===
 reflector --country US --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
 
+# == S
+sed -i '/^XferCommand *=/d' /etc/pacman.conf
+sed -i '/^\[options\]/a XferCommand = /usr/bin/aria2c --max-tries=5 --timeout=60 --connect-timeout=30 -c -x 4 -s 4 -k 1M -o %o %u' /etc/pacman.conf
+
+# == VARIABLE PACKAGES TO INSTALL ===
 BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware  efibootmgr networkmanager grub os-prober nano sudo htop iwd nano openssh smartmontools vim \
 	wget xorg-server xorg-xinit libwnck3 xorg-xinput xorg-xkill pacman-contrib pkgfile bash-completion cpupower power-profiles-daemon \
 	nano-syntax-highlighting git cmake firefox ${CPU_MICROCODE} $DE_PKGS"
@@ -272,7 +281,7 @@ cantarell-fonts otf-font-awesome"
 [[ "$STEAM_NATIVE" == "yes" ]] && BASE_PKGS="$BASE_PKGS steam gamescope mangohud lib32-mangohud"
 [[ "$FILESYSTEM" == "btrfs" ]] && BASE_PKGS="$BASE_PKGS btrfs-progs grub-btrfs timeshift"
 [[ "$CPU" == "intel" ]] && BASE_PKGS="$BASE_PKGS thermald"
-#[[ "$QEMU" == "yes" ]] && BASE_PKGS="$BASE_PKGS qemu-kvm libvirt virt-install bridge-utils virt-manager libvirt-devel virt-top libguestfs-tools guestfs-tools"
+[[ "$QEMU" == "yes" ]] && BASE_PKGS="$BASE_PKGS qemu-kvm libvirt virt-install bridge-utils virt-manager libvirt-devel virt-top libguestfs-tools guestfs-tools"
 
 if [[ "$GPU" == "Intel" ]]; then
     BASE_PKGS="$BASE_PKGS vulkan-intel intel-media-driver intel-gpu-tools libva-intel-driver"
@@ -283,6 +292,11 @@ elif [[ "$GPU" == "NVIDIA" ]]; then
 	echo "options nvidia_drm modeset=1" > /mnt/etc/modprobe.d/nvidia-drm.conf
 fi
 
+echo "BASE_PKGS" are = [$BASE_PKGS]
+
+read -p "Pause?: " HOSTNAMES
+
+# == PACSTRAP PACKAGES TO SYSTEM ===
 pacstrap /mnt $BASE_PKGS
 #$AUDIO_PKGS \
 #$NETWORK_PKGS \
