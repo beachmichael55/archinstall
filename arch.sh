@@ -231,14 +231,15 @@ swapon $SWAP
 
 # === BASE SYSTEM INSTALLATION ===
 # PACMAN TEMP TWEAKS
-sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
+sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 4/' /etc/pacman.conf
 sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
 sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
 sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
 
 pacman -Sy --noconfirm archlinux-keyring
-pacman -Sy reflector
-reflector --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
+pacman -Syy
+pacman -Sy --noconfirm reflector
+reflector --country US --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
 
 BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware  efibootmgr networkmanager grub os-prober nano sudo htop iwd nano openssh smartmontools vim \
 	wget xorg-server xorg-xinit libwnck3 xorg-xinput xorg-xkill pacman-contrib pkgfile bash-completion cpupower power-profiles-daemon \
