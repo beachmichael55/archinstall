@@ -298,8 +298,6 @@ pacstrap /mnt $BASE_PKGS
 genfstab -U /mnt > /mnt/etc/fstab
 
 # == Arch-chroot ===
-arch-chroot /mnt
-
 arch-chroot /mnt /bin/bash <<EOF
 echo "Installing and configuring GRUB bootloader..."
 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
