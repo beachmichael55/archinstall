@@ -254,10 +254,10 @@ BASE_PKGS="base base-devel $KERNEL_PKGS linux-firmware sof-firmware  efibootmgr 
 	wget xorg-server xorg-xinit libwnck3 xorg-xinput xorg-xkill pacman-contrib pkgfile bash-completion cpupower power-profiles-daemon \
 	nano-syntax-highlighting git cmake firefox ${CPU_MICROCODE} $DE_PKGS"
 	
-AUDIO_PKGS="alsa-firmware pipewire pipewire-jack pipewire-pulse pipewire-alsa alsa-plugins alsa-utils wireplumber"
+AUDIO_PKGS="alsa-firmware pipewire-alsa alsa-utils"
 
-NETWORK_PKGS="dnsmasq dnsutils ethtool modem-manager-gui networkmanager-openvpn nss-mdns usb_modeswitch wireless-regdb networkmanager-l2tp \
-xl2tpd wireless_tools wpa_supplicant"
+NETWORK_PKGS="dnsmasq dnsutils ethtool modem-manager-gui networkmanager-openvpn nss-mdns usb_modeswitch networkmanager-l2tp \
+wireless_tools"
 
 BLUETOOTH_PKGS="bluez bluez-hid2hci bluez-utils"
 
@@ -292,9 +292,30 @@ elif [[ "$GPU" == "NVIDIA" ]]; then
 	echo "options nvidia_drm modeset=1" > /mnt/etc/modprobe.d/nvidia-drm.conf
 fi
 
+# == TEST VARIABLE OUTPUT ==
+echo BOOTLOADER is = "$BOOTLOADER"
+echo KERNEL is = "$KERNEL_CHOICES"
+echo TIMEZONE = "$TIMEZONE"
+echo HOSTNAME = "$HOSTNAME"
+echo ROOT_PASS = "$ROOT_PASS"
+echo CREATE_USER = "$CREATE_USER"
+echo USERNAME = "$USERNAME"
+echo USER_PASS = "$USER_PASS"
+echo SUDO_USER = "$SUDO_USER"
+echo DM_SERVICE = "$DM_SERVICE"
+echo VM_MACHINE = "$VM_MACHINE"
+echo FILESYSTEM = "$FILESYSTEM"
+echo AUTOLOGIN = "$AUTOLOGIN"
+echo STEAM_NATIVE = "$STEAM_NATIVE"
+echo CPU = "$CPU"
+echo GPU = "$GPU"
+echo GAMING is = "$GAMING"
+echo QEMU is = "$QEMU"
+read -p "Paused (yes / no): " PAUSE
+
 echo "BASE_PKGS" are = [$BASE_PKGS]
 
-read -p "Pause?: " HOSTNAMES
+read -p "Pause?: " PAUSED
 
 # == PACSTRAP PACKAGES TO SYSTEM ===
 pacstrap /mnt $BASE_PKGS
@@ -357,5 +378,111 @@ cat <<HOST > /etc/hosts
 HOST
 
 systemctl enable NetworkManager
+
+echo "Configuring pacman..."
+sed -i 's/^#ParallelDownloads =.*/ParallelDownloads = 6/' /etc/pacman.conf
+sed -i '/# Misc options/a Color\nILoveCandy\nVerbosePkgLists' /etc/pacman.conf
+sed -i 's/^#\[multilib\]/[multilib]/' /etc/pacman.conf
+sed -i '/\[multilib\]/,/Include/ s/^#//' /etc/pacman.conf
+
+echo "Enabling system services..."
+if systemctl list-unit-files | grep -q bluetooth.service; then
+    systemctl enable bluetooth
+else
+    echo "bluetooth.service not found"
+fi
+if systemctl list-unit-files | grep -q cpupower.service; then
+    systemctl enable cpupower
+else
+    echo "cpupower.service not found"
+fi
+if systemctl list-unit-files | grep -q power-profiles-daemon.service; then
+    systemctl enable power-profiles-daemon
+else
+    echo "power-profiles-daemon.service not found"
+fi
+[[ -n "$DM_SERVICE" ]] && {
+    echo "Enabling display manager: $DM_SERVICE"
+    systemctl enable "$DM_SERVICE"
+}
+[[ "$VM_MACHINE" == "yes" ]] && {
+    echo "Enabling VM services..."
+    systemctl enable vmtoolsd
+    systemctl enable vmware-vmblock-fuse
+}
+[[ "$FILESYSTEM" == "btrfs" ]] && {
+    echo "Enabling grub-btrfsd for Btrfs snapshots..."
+    systemctl enable grub-btrfsd
+}
+[[ "$QEMU" == "yes" ]] && {
+    echo "Enabling QEMU (Virtual Machine Manager ..."
+    systemctl enable libvirtd
+}
+
+if [ ${AUTOLOGIN} = "yes" ]; then
+echo "Setting up auto-login for $USERNAME..."
+	case "$DM_SERVICE" in
+        sddm)
+			tee /etc/sddm.conf.d/autologin.conf << SDD
+			[Autologin]
+			User=${NEW_USER}
+			Session=plasmawayland
+SDD
+			;;
+		gdm)
+			tee /etc/gdm/custom.conf << GDM
+			[daemon]
+			AutomaticLoginEnable=True
+			AutomaticLogin=username
+GDM
+			;;
+		lightdm)
+			tee /etc/lightdm/lightdm.conf << LDM
+			[SeatDefaults]
+			autologin-user=${NEW_USER}
+			autologin-user-timeout=0
+LDM
+			;;
+	esac
+fi
+
+# Modify mkinitcpio.conf for Btrfs and Microcode
+echo "Modify mkinitcpio..."
+if [[ "$FILESYSTEM" == "btrfs" ]]; then
+    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs)/' /etc/mkinitcpio.conf
+else
+    sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)/' /etc/mkinitcpio.conf
+fi
+mkinitcpio -P
+
+if [[ "$CREATE_USER" == "yes" ]]; then
+    echo "📥 Installing yay (AUR helper) for $USERNAME..."
+    pacman -S --noconfirm git base-devel
+    sudo -u "$USERNAME" bash -c '
+        cd ~
+        git clone https://aur.archlinux.org/yay.git
+        cd yay
+        makepkg -si --noconfirm
+		cd ..
+    '
+fi
+rm -rf yay
+yay
+
+echo "Installing and configuring Flatpak..."
+pacman -S --noconfirm flatpak
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak update -y
+flatpak install --noninteractive -y flathub com.github.tchx84.Flatseal
+
+[[ "$STEAM_NATIVE" == "no" ]] && {
+    echo "Installing Steam via Flatpak..."
+    flatpak install --noninteractive -y flathub com.valvesoftware.Steam
+}
+[[ "$GPU" == "Intel" ]] && {
+    echo "Installing Intel VAAPI Flatpak support..."
+    flatpak install --noninteractive -y flathub org.freedesktop.Platform.VAAPI.Intel//24.08
+}
+
 
 EOF
